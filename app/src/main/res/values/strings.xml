@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">Pop Movies</string>
+    <string name="internet_error_message">Error encountered while getting movie data.</string>
+    <string name="movie_original_title">movieOriginalTitle</string>
+    <string name="movie_poster_address">moviePosterAddress</string>
+    <string name="movie_release_date">movieReleaseDate</string>
+    <string name="apiToken"></string>
+    <string name="movie_overview_address">movieOverview</string>
+    <string name="movie_rating_date">movieUserRating</string>
+    <string name="popular_movies">Popular Movies</string>
+    <string name="top_rated">Top Rated</string>
+    <string name="top_rated_api">top_rated</string>
+    <string name="popular_movies_api">popular</string>
+</resources>
