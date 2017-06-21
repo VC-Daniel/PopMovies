@@ -1,6 +1,8 @@
 package com.example.android.popmovies;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.support.v7.widget.RecyclerView;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -37,7 +39,19 @@ public class MoviePosterAdapter extends RecyclerView.Adapter<MoviePosterAdapter.
         Context context = holder.itemView.getContext();
 
         // populate the image view with the movie poster
-        Picasso.with(context).load(movieData.getMoviePostURL()).into(holder.mMovieImageView);
+
+        // if a poster bitmap was passed in use that, otherwise retrieve the poster from theMovieDB
+        if(movieData.poster_data == null || movieData.poster_data.equals(""))
+        {
+            Picasso.with(context).load(movieData.getMoviePostURL()).into(holder.mMovieImageView);
+        }
+        else
+        {
+            // This bitmap logic was inspired by the stack overflow post:
+            // https://stackoverflow.com/questions/8306623/get-bitmap-attached-to-imageview
+            Bitmap mapData = BitmapFactory.decodeByteArray(movieData.poster_data, 0, movieData.poster_data.length);
+            holder.mMovieImageView.setImageBitmap(mapData);
+        }
     }
 
     /**

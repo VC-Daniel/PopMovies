@@ -2,5 +2,5 @@
 <ImageView xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/iv_main_movie_poster"
     android:layout_width="match_parent"
-    android:layout_height="310dp"
+    android:layout_height="@dimen/imageHeight"
     android:background="@color/background"/>

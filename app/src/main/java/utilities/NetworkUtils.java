@@ -23,6 +23,9 @@ public final class NetworkUtils
     // The base path for theMovieDB api
     private static final String MOVIES_DB_BASE_URL = "https://api.themoviedb.org/3/movie/";
 
+    private static final String reviewsPath = "reviews";
+    private static final String trailersPath = "videos";
+
     // The key used to build the url to get the movie data
     private final static String API_TOKEN_PARAM = "api_key";
 
@@ -52,6 +55,63 @@ public final class NetworkUtils
         // Return the path to use to retrieve the movie data
         return url;
     }
+
+    /**
+     * Builds the URL to retrieve a movie's trailers
+     *
+     * @param movieID The movie's id.
+     * @param apiToken
+     * @return The URL to use to query the movieDB server.
+     */
+    public static URL buildTrailersUrl(String movieID, String apiToken)
+    {
+        // build the uri with the base path, the selected movie's id and the api token
+        Uri builtUri = Uri.parse(MOVIES_DB_BASE_URL).buildUpon()
+                .appendPath(movieID).appendPath(trailersPath)
+                .appendQueryParameter(API_TOKEN_PARAM, apiToken)
+                .build();
+
+        URL url = null;
+        try {
+            url = new URL(builtUri.toString());
+        } catch (MalformedURLException e) {
+            e.printStackTrace();
+        }
+
+        Log.v(TAG, "Built URI " + url);
+
+        // Return the path to use to retrieve the movie trailers
+        return url;
+    }
+
+    /**
+     * Builds the URL used to get the reviews of the movie
+     *
+     * @param movieID The movie's id.
+     * @param apiToken
+     * @return The URL to use to query the movieDB server.
+     */
+    public static URL buildReviewUrl(String movieID, String apiToken)
+    {
+        // build the uri with the base path, the supplied movie's id and the api token
+        Uri builtUri = Uri.parse(MOVIES_DB_BASE_URL).buildUpon()
+                .appendPath(movieID).appendPath(reviewsPath)
+                .appendQueryParameter(API_TOKEN_PARAM, apiToken)
+                .build();
+
+        URL url = null;
+        try {
+            url = new URL(builtUri.toString());
+        } catch (MalformedURLException e) {
+            e.printStackTrace();
+        }
+
+        Log.v(TAG, "Built URI " + url);
+
+        // Return the path to use to retrieve the movie's reviews
+        return url;
+    }
+
 
     /**
      * This method returns the entire result from the HTTP response.

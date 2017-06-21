@@ -6,15 +6,19 @@ import android.os.Parcelable;
 /**
  * Created by Daniel Sullivan on 5/2/2017.
  * Saves all the data relating to a single movie from theMovieDB
+ *
+ * The logic to write and retrieve the poster data in the parcelable is inspired by the stack overflow post
+ * https://stackoverflow.com/questions/28135819/getting-nullpointerexception-attempt-to-get-length-of-null-array-in-parcelable
  */
 
 public class MovieData implements Parcelable
 {
+    public int poster_size = 0;
+    public byte[] poster_data;
     public String poster_path;
     public String adult;
     public String overview;
     public String release_date;
-    public String[] genre_ids;
     public String id;
     public String original_title;
     public String original_language;
@@ -26,7 +30,7 @@ public class MovieData implements Parcelable
     public String vote_average;
 
     //the base path to retrieve a movie poster from
-    String POSTER_BASE_PATH = "http://image.tmdb.org/t/p/w342/";
+    private String POSTER_BASE_PATH = "http://image.tmdb.org/t/p/w342/";
 
     public MovieData(){}
 
@@ -57,11 +61,19 @@ public class MovieData implements Parcelable
     // convert a parcel into a MovieData object
     protected MovieData(Parcel in)
     {
+        poster_size = in.readInt();
+
+        // If there is a poster stored retrieve the poster data
+        if(poster_size>0)
+        {
+            poster_data = new byte[poster_size];
+            in.readByteArray(poster_data);
+        }
+
         poster_path = in.readString();
         adult = in.readString();
         overview = in.readString();
         release_date = in.readString();
-        genre_ids = in.createStringArray();
         id = in.readString();
         original_title = in.readString();
         original_language = in.readString();
@@ -82,11 +94,17 @@ public class MovieData implements Parcelable
     @Override
     public void writeToParcel(Parcel dest, int flags)
     {
+        dest.writeInt(poster_size);
+
+        // if there is a poster store the poster
+        if(poster_size>0)
+        {
+            dest.writeByteArray(poster_data);
+        }
         dest.writeString(poster_path);
         dest.writeString(adult);
         dest.writeString(overview);
         dest.writeString(release_date);
-        dest.writeStringArray(genre_ids);
         dest.writeString(id);
         dest.writeString(original_title);
         dest.writeString(original_language);

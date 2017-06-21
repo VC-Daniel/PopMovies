@@ -1,7 +1,10 @@
 package com.example.android.popmovies;
 
 import android.content.Intent;
+import android.database.Cursor;
+import android.net.Uri;
 import android.os.AsyncTask;
+import android.os.Parcelable;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.GridLayoutManager;
@@ -14,13 +17,14 @@ import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
+import com.example.android.popmovies.data.FavoriteMoviesContract;
 import java.net.URL;
 import java.util.ArrayList;
 import utilities.NetworkUtils;
 import utilities.TheMovieDBJsonUtils;
 
 /**
- * Display a grid of movie posters. Either popular movies or top rated movie posters can be displayed.
+ * Display a grid of movie posters. Either popular movies, top rated movie, or favorite movie posters can be displayed.
  * Touch a movie poster to learn more about it.
  */
 public class MoviesOverviewActivity extends AppCompatActivity implements MoviePosterAdapter.MoviePosterAdapterOnClickHandler
@@ -75,7 +79,7 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
         /* This TextView is used to display errors and will be hidden if there are no errors */
         mErrorTextView = (TextView) findViewById(R.id.tv_error_message);
 
-        GridLayoutManager layoutManager = new GridLayoutManager(this, 2);
+        GridLayoutManager layoutManager = new GridLayoutManager(this, this.getResources().getInteger(R.integer.gridColumns));
         mRecyclerView.setLayoutManager(layoutManager);
 
         // the child layouts size will not change in the RecyclerView
@@ -116,8 +120,11 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
     {
         int id = item.getItemId();
 
-        // If the user has selected the popular movies or top rated filter then load retrieve
-        // the movie data from theMovieDB
+        /*
+         If the user has selected the popular movies or top rated filter then load retrieve
+         the movie data from theMovieDB. If the user selected to load favorites then pull the data
+         from the favorites database via the content provider.
+        */
         if (id == R.id.action_popular)
         {
             Log.v(TAG, "Handling user click to retrieve data with the filter " + POPULAR_FILTER);
@@ -130,6 +137,12 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
             loadMovieData(TOP_RATED_FILTER);
             return true;
         }
+        else if (id == R.id.action_favorite_movies)
+        {
+            Log.v(TAG,"Handling user click to retrieve data from the favorites content provider");
+            loadMovieData("");
+            return true;
+        }
 
         return super.onOptionsItemSelected(item);
     }
@@ -139,7 +152,7 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
      * recyclerView as a grid. While the data is loading it will display a loading indicator
      * and if there is an error the user will be notified
      *
-     * @param filter the type of movie to retrieve data for. For example popular or top_rated
+     * @param filter the type of movie to retrieve data for. For example popular or top_rated. Pass an empty string to get the favorite movies
      */
     private void loadMovieData(String filter)
     {
@@ -152,9 +165,17 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
         // clear out the existing movie data
         mMovieDataAdapter.setMovieData(null);
 
-        Log.v(TAG, "Create an async task to get the movie data from the api");
-        // get movie data from theMovieDB using the chosen filter
-        new FetchMovieData().execute(filter);
+        // perform an api call if a filter was passed in otherwise retrieve the data from the favorites content provider
+        if(filter.equals(TOP_RATED_FILTER) || filter.equals(POPULAR_FILTER))
+        {
+            Log.v(TAG, "Create an async task to get the movie data from the api");
+            // get movie data from theMovieDB using the chosen filter
+            new FetchMovieData().execute(filter);
+        }
+        else
+        {
+            new FetchFavoriteMovieData().execute();
+        }
     }
 
     /**
@@ -185,29 +206,88 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
     public void onClick(MovieData movieData)
     {
         // get the keys to store the movie data in the intent
-        String originalTitleKey  = getString(R.string.movie_original_title);
-        String moviePosterAddressKey = getString(R.string.movie_poster_address);
-        String movieReleaseDateKey = getString(R.string.movie_release_date);
-        String movieOverviewKey = getString(R.string.movie_overview_address);
-        String movieUserRatingKey = getString(R.string.movie_rating_date);
-
-        // the full address to the movie poster on theMovieDB
-        String moviePosterAddress = movieData.getMoviePostURL();
+        String movieDataKey  = getString(R.string.all_single_movie_data);
 
         // create an intent to go to the movie detail activity
         Intent intent = new Intent(this,MovieDetailActivity.class);
 
         // store the movies data in the intent
-        intent.putExtra(originalTitleKey,movieData.original_title);
-        intent.putExtra(moviePosterAddressKey,moviePosterAddress);
-        intent.putExtra(movieReleaseDateKey,movieData.release_date);
-        intent.putExtra(movieOverviewKey,movieData.overview);
-        intent.putExtra(movieUserRatingKey,movieData.vote_average);
+        ArrayList<Parcelable> movieParcel = new ArrayList<>();
+        movieParcel.add(movieData);
+
+        intent.putParcelableArrayListExtra(movieDataKey,movieParcel);
+
         Log.v(TAG, "Handling user click on the movie poster for " + movieData.original_title);
         // launch the movie detail activity
         startActivity(intent);
     }
 
+    /**
+     * Retrieve movie data from favorite movies content provider in an async task
+     */
+    public class FetchFavoriteMovieData extends AsyncTask<String, Void, ArrayList<MovieData>>
+    {
+        @Override
+        protected void onPostExecute(ArrayList<MovieData> movieData)
+        {
+            Log.v(TAG, "Finished attempting to retrieve data from the content provider");
+            // hide the loading indicator and display the grid of movie posters
+            displayLoadingIndicator(false);
+
+            // if movie  data was returned show the movie posters in the recycler view
+            // otherwise display the error message
+            if(movieData != null)
+            {
+                mMovieDataAdapter.setMovieData(movieData);
+            }
+            else
+            {
+                Log.v(TAG, "There was an issue while retrieving the favorite movie data");
+                mErrorTextView.setVisibility(View.VISIBLE);
+            }
+        }
+
+        /**
+         * @param filter
+         * @return returns an array list of MovieData with information about all the movie data obtained from
+         * the favorite movies content provider
+         */
+        @Override
+        protected ArrayList<MovieData> doInBackground(String[] filter)
+        {
+            // Query all the data about all the favorite movies
+            Uri uri = FavoriteMoviesContract.FavoiteMovieEntry.CONTENT_URI;
+            Cursor results = getContentResolver().query(uri,null,null,null,null);
+
+            // Store all the data about each movie
+            ArrayList<MovieData> movieData = new ArrayList<>();
+            results.moveToFirst();
+            while (!results.isAfterLast())
+            {
+                MovieData data = new MovieData();
+
+                data.poster_size = results.getInt(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_POSTER_SIZE));
+                data.poster_data = results.getBlob(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_POSTER_Data));
+                data.poster_path = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_POSTER));
+                data.adult = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_ADULT));
+                data.overview = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_OVERVIEW));
+                data.release_date = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_RELEASE_DATE));
+                data.id = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_MOVIE_DB_ID));
+                data.title = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_ORIGINAL_TITLE));
+                data.backdrop_path = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_BACKDROP));
+                data.popularity = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_POPULARITY));
+                data.vote_count = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_VOTE_COUNT));
+                data.video = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_VIDEO));
+                data.vote_average = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_VOTE_AVERAGE));
+
+                movieData.add(data);
+                results.moveToNext();
+            }
+
+            results.close();
+            return movieData;
+        }
+    }
 
     /**
      * Retrieve movie data from theMovieDB in an async task

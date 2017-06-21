@@ -21,6 +21,11 @@
         <activity android:name=".MovieDetailActivity" android:parentActivityName=".MoviesOverviewActivity"><meta-data
             android:name="android.support.PARENT_ACTIVITY"
             android:value=".MoviesOverviewActivity" /></activity>
+        <!-- Facilitates interacting with the SQLite database that stores information about the users favorite movies -->
+        <provider
+            android:name="com.example.android.popmovies.data.FavoriteMoviesContentProvider"
+            android:authorities="com.example.android.popmovies"
+            android:exported="false"/>
     </application>
 
 </manifest>

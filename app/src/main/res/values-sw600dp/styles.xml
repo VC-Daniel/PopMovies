@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="TitleStyle">
+        <item name="android:textColor">@color/defaultTextColor</item>
+        <item name="android:textSize">32sp</item>
+    </style>
+    <style name="HeaderStyle">
+        <item name="android:textColor">@color/defaultTextColor</item>
+        <item name="android:textSize">26sp</item>
+    </style>
+    <style name="ContentStyle">
+        <item name="android:textColor">@color/defaultTextColor</item>
+        <item name="android:textSize">20sp</item>
+    </style>
+</resources>
