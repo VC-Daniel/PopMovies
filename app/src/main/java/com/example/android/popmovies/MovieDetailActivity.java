@@ -1,7 +1,9 @@
 package com.example.android.popmovies;
 
 import android.app.LoaderManager;
+import android.content.AsyncQueryHandler;
 import android.content.AsyncTaskLoader;
+import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.content.Loader;
@@ -35,6 +37,9 @@ import utilities.TheMovieDBJsonUtils;
  * <p>
  * The idea of how to use multiple loaders in this activity is inspired by the stack overflow post:
  * https://stackoverflow.com/questions/15643907/multiple-loaders-in-same-activity/20839825#20839825
+ *
+ * I referenced the link below to use an asyncqueryhandler to perform content provider calls asynchronously
+ * http://codetheory.in/using-asyncqueryhandler-to-access-content-providers-asynchronously-in-android/
  */
 public class MovieDetailActivity extends AppCompatActivity implements MovieTrailerAdapter.MovieTrailerAdapterOnClickHandler {
 
@@ -47,6 +52,10 @@ public class MovieDetailActivity extends AppCompatActivity implements MovieTrail
     int trailerLoaderID = 100;
     int reviewLoaderId = 200;
 
+    int favoriteMovieHandlerID = 300;
+
+    FavoritesQueryHandler favoritesQueryHandler;
+
     // all the data about the movie being displayed
     MovieData movieData;
 
@@ -55,6 +64,9 @@ public class MovieDetailActivity extends AppCompatActivity implements MovieTrail
 
     String movieIDKey;
     String apiToken;
+
+    // Used to store if a movie is a favorite movie
+    boolean isFavorite;
 
     /**
      * When a trailer is clicked launch an intent with the trailer's url
@@ -76,16 +88,13 @@ public class MovieDetailActivity extends AppCompatActivity implements MovieTrail
      *
      * @return returns true if the movie is a favorite movie
      */
-    private boolean isFavoriteMovie() {
+    private void isFavoriteMovie() {
         // Query the favorite movies database to determine if it contains movie data with the matching id
         Uri uri = FavoriteMoviesContract.FavoiteMovieEntry.CONTENT_URI;
         uri = uri.buildUpon().appendPath(movieData.id).build();
-        Cursor results = getContentResolver().query(uri, null, null, null, null);
-        int count = results.getCount();
-        results.close();
-
-        // If more then 0 rows were returned then it is in the favorite movies database
-        return count > 0;
+        favoritesQueryHandler.startQuery(favoriteMovieHandlerID,null,uri, null, null, null, null);
+        // set the favorite button to disabled while we attempt to validate if this is a favorite movie
+        mBinding.favoriteButton.setEnabled(false);
     }
 
     @Override
@@ -111,6 +120,8 @@ public class MovieDetailActivity extends AppCompatActivity implements MovieTrail
         movieIDKey = getString(R.string.movie_id);
         apiToken = getString(R.string.apiToken);
 
+        // Asynchronously makes requests to the content provider
+        favoritesQueryHandler = new FavoritesQueryHandler(getContentResolver());
 
         // If the starting intent is not null retrieve the information passed in about the movie
         if (startingIntent != null) {
@@ -185,7 +196,8 @@ public class MovieDetailActivity extends AppCompatActivity implements MovieTrail
                 getLoaderManager().initLoader(reviewLoaderId, movieDataBundle, reviewDataLoaderCallbacks);
                 getLoaderManager().initLoader(trailerLoaderID, movieDataBundle, trailerDataLoaderCallbacks);
 
-                setFavorite();
+                // Set the favorite button to the proper state depending on if the movie is a favorite movie or not
+                isFavoriteMovie();
             }
         }
     }
@@ -306,7 +318,7 @@ public class MovieDetailActivity extends AppCompatActivity implements MovieTrail
     {
         // if the movie is not a favorite movie add it to the database otherwise it is already a favorite
         // so the user wants to remove it as a favorite
-        if (!isFavoriteMovie())
+        if (!isFavorite)
         {
             // Insert new favorite movie data via the ContentResolver
             ContentValues contentValues = new ContentValues();
@@ -341,8 +353,7 @@ public class MovieDetailActivity extends AppCompatActivity implements MovieTrail
             contentValues.put(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_VOTE_AVERAGE, movieData.vote_average);
 
             // Insert the movie data via the content resolver
-            Uri uri = getContentResolver().insert(FavoriteMoviesContract.FavoiteMovieEntry.CONTENT_URI, contentValues);
-
+            favoritesQueryHandler.startInsert(favoriteMovieHandlerID,null,FavoriteMoviesContract.FavoiteMovieEntry.CONTENT_URI, contentValues);
         }
         else
         {
@@ -350,24 +361,48 @@ public class MovieDetailActivity extends AppCompatActivity implements MovieTrail
             Uri uri = FavoriteMoviesContract.FavoiteMovieEntry.CONTENT_URI;
             uri = uri.buildUpon().appendPath(movieData.id).build();
 
-            getContentResolver().delete(uri, null, null);
-
+            favoritesQueryHandler.startDelete(favoriteMovieHandlerID, null, uri, null, null);
         }
         // toggle the button so it matches the current state of if the movie is a favorite movie or not
-        setFavorite();
+        isFavoriteMovie();
     }
 
     /**
      *  Toggle the button so it matches the current state of if the movie is a favorite movie or not
      */
     private void setFavorite() {
-        if (isFavoriteMovie())
+        mBinding.favoriteButton.setEnabled(true);
+        if (isFavorite)
         {
             mBinding.favoriteButton.setText(getString(R.string.favoritedString));
         }
         else
         {
             mBinding.favoriteButton.setText(getString(R.string.nonfavoritedString));
+        }
+    }
+
+    // Asynchronously makes requests to the content provider
+    class FavoritesQueryHandler extends AsyncQueryHandler {
+
+        FavoritesQueryHandler(ContentResolver cr)
+        {
+            super(cr);
+        }
+
+        @Override
+        protected void onQueryComplete(int token, Object cookie, Cursor cursor) {
+            int count = cursor.getCount();
+            cursor.close();
+
+            // If more then 0 rows were returned then it is in the favorite movies database
+            if (count > 0) {
+                isFavorite = true;
+                setFavorite();
+            } else {
+                isFavorite = false;
+                setFavorite();
+            }
         }
     }
 }

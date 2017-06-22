@@ -5,6 +5,9 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Parcelable;
+import android.support.v4.app.LoaderManager;
+import android.support.v4.content.AsyncTaskLoader;
+import android.support.v4.content.Loader;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.GridLayoutManager;
@@ -16,7 +19,6 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-
 import com.example.android.popmovies.data.FavoriteMoviesContract;
 import java.net.URL;
 import java.util.ArrayList;
@@ -27,10 +29,14 @@ import utilities.TheMovieDBJsonUtils;
  * Display a grid of movie posters. Either popular movies, top rated movie, or favorite movie posters can be displayed.
  * Touch a movie poster to learn more about it.
  */
-public class MoviesOverviewActivity extends AppCompatActivity implements MoviePosterAdapter.MoviePosterAdapterOnClickHandler
-{
+public class MoviesOverviewActivity extends AppCompatActivity implements MoviePosterAdapter.MoviePosterAdapterOnClickHandler, LoaderManager.LoaderCallbacks<Cursor> {
     // Store the class name for logging
     private static final String TAG = NetworkUtils.class.getSimpleName();
+
+    int FAVORITES_LOADER_ID = 400;
+
+    // stores the current type of movie that is being displayed such as popular or top rated movies
+    String currentFilter = null;
 
     /**
      * Stores theMovieDB api token for use in this class
@@ -53,16 +59,14 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
     String TOP_RATED_FILTER;
 
     @Override
-    protected void onSaveInstanceState(Bundle outState)
-    {
+    protected void onSaveInstanceState(Bundle outState) {
         // store the movieData so it can be retrieved if the screen is rotated
         outState.putParcelableArrayList("movieData", mMovieDataAdapter.mMovieData);
         super.onSaveInstanceState(outState);
     }
 
     @Override
-    protected void onCreate(Bundle savedInstanceState)
-    {
+    protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_movies_overview);
 
@@ -92,14 +96,11 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
 
         // if there is a saved instance state that contains previously loaded movieData
         // use that data  rather then re-obtaining the data.
-        if(savedInstanceState != null && savedInstanceState.getParcelableArrayList("movieData") != null)
-        {
+        if (savedInstanceState != null && savedInstanceState.getParcelableArrayList("movieData") != null) {
             Log.v(TAG, "Using previously loaded movie data");
             ArrayList<MovieData> savedData = savedInstanceState.getParcelableArrayList("movieData");
             mMovieDataAdapter.setMovieData(savedData);
-        }
-        else
-        {
+        } else {
             Log.v(TAG, "No previously saved movie data, loading data from theMovieDB api");
             // if no previous data exists then retrieve data on popular movies to populate the grid
             loadMovieData(POPULAR_FILTER);
@@ -107,8 +108,7 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
     }
 
     @Override
-    public boolean onCreateOptionsMenu(Menu menu)
-    {
+    public boolean onCreateOptionsMenu(Menu menu) {
         // show the different filter options in the menu
         MenuInflater inflater = getMenuInflater();
         inflater.inflate(R.menu.filters, menu);
@@ -116,8 +116,7 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item)
-    {
+    public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
 
         /*
@@ -125,21 +124,16 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
          the movie data from theMovieDB. If the user selected to load favorites then pull the data
          from the favorites database via the content provider.
         */
-        if (id == R.id.action_popular)
-        {
+        if (id == R.id.action_popular) {
             Log.v(TAG, "Handling user click to retrieve data with the filter " + POPULAR_FILTER);
             loadMovieData(POPULAR_FILTER);
             return true;
-        }
-        else if (id == R.id.action_top_rated)
-        {
+        } else if (id == R.id.action_top_rated) {
             Log.v(TAG, "Handling user click to retrieve data with the filter " + TOP_RATED_FILTER);
             loadMovieData(TOP_RATED_FILTER);
             return true;
-        }
-        else if (id == R.id.action_favorite_movies)
-        {
-            Log.v(TAG,"Handling user click to retrieve data from the favorites content provider");
+        } else if (id == R.id.action_favorite_movies) {
+            Log.v(TAG, "Handling user click to retrieve data from the favorites content provider");
             loadMovieData("");
             return true;
         }
@@ -154,8 +148,10 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
      *
      * @param filter the type of movie to retrieve data for. For example popular or top_rated. Pass an empty string to get the favorite movies
      */
-    private void loadMovieData(String filter)
-    {
+    private void loadMovieData(String filter) {
+        // save the filter for the type of movies to be displayed
+        currentFilter = filter;
+
         // hide the error message text view while attempting to get new data
         mErrorTextView.setVisibility(View.INVISIBLE);
 
@@ -166,15 +162,12 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
         mMovieDataAdapter.setMovieData(null);
 
         // perform an api call if a filter was passed in otherwise retrieve the data from the favorites content provider
-        if(filter.equals(TOP_RATED_FILTER) || filter.equals(POPULAR_FILTER))
-        {
+        if (filter.equals(TOP_RATED_FILTER) || filter.equals(POPULAR_FILTER)) {
             Log.v(TAG, "Create an async task to get the movie data from the api");
             // get movie data from theMovieDB using the chosen filter
             new FetchMovieData().execute(filter);
-        }
-        else
-        {
-            new FetchFavoriteMovieData().execute();
+        } else {
+            getSupportLoaderManager().restartLoader(FAVORITES_LOADER_ID, null, MoviesOverviewActivity.this);
         }
     }
 
@@ -183,15 +176,11 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
      *
      * @param isLoading if the loading indicator should be displayed and if the recyclerView should be hidden
      */
-    private void displayLoadingIndicator(boolean isLoading)
-    {
-        if(isLoading)
-        {
+    private void displayLoadingIndicator(boolean isLoading) {
+        if (isLoading) {
             mDataLoadingProgressBar.setVisibility(View.VISIBLE);
             mRecyclerView.setVisibility(View.INVISIBLE);
-        }
-        else
-        {
+        } else {
             mDataLoadingProgressBar.setVisibility(View.INVISIBLE);
             mRecyclerView.setVisibility(View.VISIBLE);
         }
@@ -203,112 +192,127 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
      * @param movieData Information about the selected movie
      */
     @Override
-    public void onClick(MovieData movieData)
-    {
+    public void onClick(MovieData movieData) {
         // get the keys to store the movie data in the intent
-        String movieDataKey  = getString(R.string.all_single_movie_data);
+        String movieDataKey = getString(R.string.all_single_movie_data);
 
         // create an intent to go to the movie detail activity
-        Intent intent = new Intent(this,MovieDetailActivity.class);
+        Intent intent = new Intent(this, MovieDetailActivity.class);
 
         // store the movies data in the intent
         ArrayList<Parcelable> movieParcel = new ArrayList<>();
         movieParcel.add(movieData);
 
-        intent.putParcelableArrayListExtra(movieDataKey,movieParcel);
+        intent.putParcelableArrayListExtra(movieDataKey, movieParcel);
 
         Log.v(TAG, "Handling user click on the movie poster for " + movieData.original_title);
         // launch the movie detail activity
         startActivity(intent);
     }
 
+
     /**
-     * Retrieve movie data from favorite movies content provider in an async task
+     * Gets the users favorite movies from the favorite movies database via a content provider
      */
-    public class FetchFavoriteMovieData extends AsyncTask<String, Void, ArrayList<MovieData>>
-    {
-        @Override
-        protected void onPostExecute(ArrayList<MovieData> movieData)
-        {
-            Log.v(TAG, "Finished attempting to retrieve data from the content provider");
-            // hide the loading indicator and display the grid of movie posters
-            displayLoadingIndicator(false);
+    @Override
+    public Loader<Cursor> onCreateLoader(int id, final Bundle loaderArgs) {
 
-            // if movie  data was returned show the movie posters in the recycler view
-            // otherwise display the error message
-            if(movieData != null)
-            {
-                mMovieDataAdapter.setMovieData(movieData);
+        return new AsyncTaskLoader<Cursor>(this) {
+
+            // Initialize a Cursor, this will hold all the task data
+            Cursor mTaskData = null;
+
+            // onStartLoading() is called when a loader first starts loading data
+            @Override
+            protected void onStartLoading() {
+                if (currentFilter != null) {
+                    // if the current filter is not popular or top rated movies then we want to get the users favorite movies
+                    if (currentFilter != getString(R.string.popular_movies_api) && currentFilter != getString(R.string.top_rated)) {
+                        // Force a new load
+                        forceLoad();
+                    }
+                }
             }
-            else
-            {
-                Log.v(TAG, "There was an issue while retrieving the favorite movie data");
-                mErrorTextView.setVisibility(View.VISIBLE);
+
+            // Get all the user's favorite movies
+            @Override
+            public Cursor loadInBackground() {
+
+                // Query all the data about all the favorite movies
+                Uri uri = FavoriteMoviesContract.FavoiteMovieEntry.CONTENT_URI;
+                return getContentResolver().query(uri, null, null, null, null);
             }
+
+            public void deliverResult(Cursor data) {
+
+                Log.v(TAG, "Finished attempting to retrieve data from the content provider");
+                // hide the loading indicator and display the grid of movie posters
+                displayLoadingIndicator(false);
+
+                // if movie  data was returned show the movie posters in the recycler view
+                // otherwise display the error message
+                if (data == null) {
+                    Log.v(TAG, "There was an issue while retrieving the favorite movie data");
+                    mErrorTextView.setVisibility(View.VISIBLE);
+                }
+
+                mTaskData = data;
+                super.deliverResult(data);
+            }
+        };
+    }
+
+    // convert the cursor data into an list of MovieData and display the user's favorite movies
+    @Override
+    public void onLoadFinished(Loader<Cursor> loader, Cursor data) {
+        // Store all the data about each movie
+        ArrayList<MovieData> movieData = new ArrayList<>();
+        data.moveToFirst();
+        while (!data.isAfterLast()) {
+            MovieData singleMovieData = new MovieData();
+
+            singleMovieData.poster_size = data.getInt(data.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_POSTER_SIZE));
+            singleMovieData.poster_data = data.getBlob(data.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_POSTER_Data));
+            singleMovieData.poster_path = data.getString(data.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_POSTER));
+            singleMovieData.adult = data.getString(data.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_ADULT));
+            singleMovieData.overview = data.getString(data.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_OVERVIEW));
+            singleMovieData.release_date = data.getString(data.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_RELEASE_DATE));
+            singleMovieData.id = data.getString(data.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_MOVIE_DB_ID));
+            singleMovieData.title = data.getString(data.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_ORIGINAL_TITLE));
+            singleMovieData.backdrop_path = data.getString(data.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_BACKDROP));
+            singleMovieData.popularity = data.getString(data.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_POPULARITY));
+            singleMovieData.vote_count = data.getString(data.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_VOTE_COUNT));
+            singleMovieData.video = data.getString(data.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_VIDEO));
+            singleMovieData.vote_average = data.getString(data.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_VOTE_AVERAGE));
+
+            movieData.add(singleMovieData);
+            data.moveToNext();
         }
+        data.close();
 
-        /**
-         * @param filter
-         * @return returns an array list of MovieData with information about all the movie data obtained from
-         * the favorite movies content provider
-         */
-        @Override
-        protected ArrayList<MovieData> doInBackground(String[] filter)
-        {
-            // Query all the data about all the favorite movies
-            Uri uri = FavoriteMoviesContract.FavoiteMovieEntry.CONTENT_URI;
-            Cursor results = getContentResolver().query(uri,null,null,null,null);
+        mMovieDataAdapter.setMovieData(movieData);
+    }
 
-            // Store all the data about each movie
-            ArrayList<MovieData> movieData = new ArrayList<>();
-            results.moveToFirst();
-            while (!results.isAfterLast())
-            {
-                MovieData data = new MovieData();
-
-                data.poster_size = results.getInt(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_POSTER_SIZE));
-                data.poster_data = results.getBlob(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_POSTER_Data));
-                data.poster_path = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_POSTER));
-                data.adult = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_ADULT));
-                data.overview = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_OVERVIEW));
-                data.release_date = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_RELEASE_DATE));
-                data.id = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_MOVIE_DB_ID));
-                data.title = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_ORIGINAL_TITLE));
-                data.backdrop_path = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_BACKDROP));
-                data.popularity = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_POPULARITY));
-                data.vote_count = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_VOTE_COUNT));
-                data.video = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_VIDEO));
-                data.vote_average = results.getString(results.getColumnIndex(FavoriteMoviesContract.FavoiteMovieEntry.COLUMN_VOTE_AVERAGE));
-
-                movieData.add(data);
-                results.moveToNext();
-            }
-
-            results.close();
-            return movieData;
-        }
+    @Override
+    public void onLoaderReset(Loader<Cursor> loader) {
+        mMovieDataAdapter.setMovieData(null);
     }
 
     /**
      * Retrieve movie data from theMovieDB in an async task
      */
-    public class FetchMovieData extends AsyncTask<String, Void, ArrayList<MovieData>>
-    {
+    public class FetchMovieData extends AsyncTask<String, Void, ArrayList<MovieData>> {
         @Override
-        protected void onPostExecute(ArrayList<MovieData> movieData)
-        {
+        protected void onPostExecute(ArrayList<MovieData> movieData) {
             Log.v(TAG, "Finished attempting to retrieve data from the api");
             // hide the loading indicator and display the grid of movie posters
             displayLoadingIndicator(false);
 
             // if movie  data was returned show the movie posters in the recycler view
             // otherwise display the error message
-            if(movieData != null)
-            {
+            if (movieData != null) {
                 mMovieDataAdapter.setMovieData(movieData);
-            }
-            else
-            {
+            } else {
                 Log.v(TAG, "There was an issue while retrieving the movie data");
                 mErrorTextView.setVisibility(View.VISIBLE);
             }
@@ -320,13 +324,11 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
          * theMovieDB
          */
         @Override
-        protected ArrayList<MovieData> doInBackground(String[] filter)
-        {
+        protected ArrayList<MovieData> doInBackground(String[] filter) {
             // get the url to retrieve movie data based on the selected filter
             URL movieDBRequestUrl = NetworkUtils.buildUrl(filter[0], apiToken);
 
-            try
-            {
+            try {
 
                 Log.v(TAG, "Retrieving movie data using the Url: " + movieDBRequestUrl);
                 // get a response from theMovieDB
@@ -336,9 +338,7 @@ public class MoviesOverviewActivity extends AppCompatActivity implements MoviePo
                 ArrayList<MovieData> allMovieData = TheMovieDBJsonUtils
                         .getMovieDataFromJson(MovieDataResponse);
                 return allMovieData;
-            }
-            catch (Exception e)
-            {
+            } catch (Exception e) {
                 // if there was an issue print the stack trace to help determine what the issue is
                 e.printStackTrace();
                 return null;

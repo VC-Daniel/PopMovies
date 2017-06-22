@@ -3,4 +3,4 @@
     android:id="@+id/iv_main_movie_poster"
     android:layout_width="match_parent"
     android:layout_height="@dimen/imageHeight"
-    android:background="@color/background"/>
+    android:background="@color/background" />
